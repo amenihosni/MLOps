@@ -7,51 +7,59 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Debug files
-        run: ls -al
-
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y make
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make
 
-      - name: Set up Python 3.9
+      - name: Setup Python 3.9
         uses: actions/setup-python@v3
         with:
           python-version: "3.9"
 
-      - name: Create and activate venv
+      - name: Initialize virtual environment
         run: |
           python -m venv venv
           echo "VENV_PATH=$(pwd)/venv" >> $GITHUB_ENV
-          source venv/bin/activate
-          pip install --upgrade pip
 
-      - name: Install dependencies
+      - name: Install project dependencies
         run: |
           source $VENV_PATH/bin/activate
-          pip install -r requirements.txt
+          make install
 
-      - name: Prepare data
+      - name: Data preparation
         run: |
           source $VENV_PATH/bin/activate
-          python main.py --prepare churn-bigml-80.csv
+          make prepare
 
-      - name: Train model
+      - name: Code quality checks
         run: |
           source $VENV_PATH/bin/activate
-          python main.py --train || exit 1
+          make lint
 
-      - name: Validate model
+      - name: Model training
         run: |
-          if [ ! -f model.joblib ]; then
-            echo "::error::Model file not found!"
-            exit 1
-          fi
-          ls -lh model.joblib
+          source $VENV_PATH/bin/activate
+          make train || exit 1
 
-      - name: Upload artifacts
+      - name: Model evaluation
+        run: |
+          source $VENV_PATH/bin/activate
+          make evaluate
+
+      - name: Run tests
+        run: |
+          source $VENV_PATH/bin/activate
+          make test
+
+      - name: Model verification
+        run: |
+          make check-model
+
+      - name: Archive artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ml-artifacts
