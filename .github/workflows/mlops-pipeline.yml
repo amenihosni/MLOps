@@ -3,36 +3,62 @@ name: MLOps Pipeline
 on: [push, pull_request]
 
 jobs:
-  train-and-deploy:
+  ml-pipeline:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Set up Python 3.9
         uses: actions/setup-python@v3
         with:
           python-version: "3.9"
 
-      - name: Install dependencies
+      - name: Create and activate virtual environment
         run: |
           python -m venv venv
-          source venv/bin/activate
+          echo "VIRTUAL_ENV=venv" >> $GITHUB_ENV
+          echo "$PWD/venv/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
           pip install -r requirements.txt
+          pip install flake8 black bandit pytest
+
+      - name: Prepare data
+        run: |
+          python main.py --prepare churn-bigml-80.csv
+
+      - name: Lint code
+        run: |
+          flake8 *.py
+          black --check *.py
+          bandit -r .
 
       - name: Train model
         run: |
-          source venv/bin/activate
-          python main.py --train
+          python main.py --train || exit 1
 
       - name: Evaluate model
         run: |
-          source venv/bin/activate
-          python main.py --evaluate
+          python main.py --evaluate || exit 1
 
-      - name: Run MLflow UI
+      - name: Run unit tests
         run: |
-          source venv/bin/activate
-          nohup python -m mlflow ui --host 0.0.0.0 --port 5000 &
-          sleep 2 && xdg-open http://127.0.0.1:5000 || start http://127.0.0.1:5000 || open http://127.0.0.1:5000
+          pytest tests/ -v
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} .
+
+      - name: Push Docker image
+        if: github.event_name == 'push'
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          docker tag ${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} ${{ vars.DOCKER_REPO }}:${{ github.sha }}
+          docker push ${{ vars.DOCKER_REPO }}:${{ github.sha }}
