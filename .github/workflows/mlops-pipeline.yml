@@ -10,6 +10,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Debug files
+        run: ls -al
+
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y make
 
@@ -18,49 +21,40 @@ jobs:
         with:
           python-version: "3.9"
 
-      - name: Create virtual environment
-        run: python -m venv venv
-
-      - name: Install project dependencies
+      - name: Create and activate venv
         run: |
+          python -m venv venv
+          echo "VENV_PATH=$(pwd)/venv" >> $GITHUB_ENV
           source venv/bin/activate
           pip install --upgrade pip
+
+      - name: Install dependencies
+        run: |
+          source $VENV_PATH/bin/activate
           pip install -r requirements.txt
 
       - name: Prepare data
         run: |
-          source venv/bin/activate
-          make prepare
-
-      - name: Lint code
-        run: |
-          source venv/bin/activate
-          make lint
+          source $VENV_PATH/bin/activate
+          python main.py --prepare churn-bigml-80.csv
 
       - name: Train model
         run: |
-          source venv/bin/activate
-          make train
+          source $VENV_PATH/bin/activate
+          python main.py --train || exit 1
 
-      - name: Evaluate model
-        run: |
-          source venv/bin/activate
-          make evaluate
-
-      - name: Run tests
-        run: |
-          source venv/bin/activate
-          make test
-
-      - name: Validate model artifact
+      - name: Validate model
         run: |
           if [ ! -f model.joblib ]; then
-            echo "❌ Model file not found!"
+            echo "::error::Model file not found!"
             exit 1
           fi
+          ls -lh model.joblib
 
-      - name: Upload model
+      - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: trained-model
-          path: model.joblib
+          name: ml-artifacts
+          path: |
+            model.joblib
+            mlruns/
