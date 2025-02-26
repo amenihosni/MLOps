@@ -15,50 +15,44 @@ jobs:
         with:
           python-version: "3.9"
 
-      - name: Create and activate virtual environment
-        run: |
-          python -m venv venv
-          echo "VIRTUAL_ENV=venv" >> $GITHUB_ENV
-          echo "$PWD/venv/bin" >> $GITHUB_PATH
+      - name: Create virtual environment
+        run: python -m venv venv
 
       - name: Install dependencies
         run: |
+          source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install flake8 black bandit pytest
+          pip install flake8 black pytest
 
       - name: Prepare data
         run: |
+          source venv/bin/activate
           python main.py --prepare churn-bigml-80.csv
 
-      - name: Lint code
+      - name: Run linters
         run: |
+          source venv/bin/activate
           flake8 *.py
           black --check *.py
-          bandit -r .
 
       - name: Train model
         run: |
-          python main.py --train || exit 1
+          source venv/bin/activate
+          python main.py --train
 
       - name: Evaluate model
         run: |
-          python main.py --evaluate || exit 1
+          source venv/bin/activate
+          python main.py --evaluate
 
-      - name: Run unit tests
+      - name: Run tests
         run: |
+          source venv/bin/activate
           pytest tests/ -v
 
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} .
-
-      - name: Push Docker image
-        if: github.event_name == 'push'
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker tag ${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} ${{ vars.DOCKER_REPO }}:${{ github.sha }}
-          docker push ${{ vars.DOCKER_REPO }}:${{ github.sha }}
+      - name: Save model artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: trained-model
+          path: model.joblib
