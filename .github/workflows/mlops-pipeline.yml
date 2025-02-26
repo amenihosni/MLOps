@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Install system dependencies
@@ -18,33 +18,49 @@ jobs:
         with:
           python-version: "3.9"
 
+      - name: Create virtual environment
+        run: python -m venv venv
+
       - name: Install project dependencies
-        run: make install
+        run: |
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Prepare data
-        run: make prepare
+        run: |
+          source venv/bin/activate
+          make prepare
 
-      - name: Run code quality checks
-        run: make lint
+      - name: Lint code
+        run: |
+          source venv/bin/activate
+          make lint
 
       - name: Train model
-        run: make train
+        run: |
+          source venv/bin/activate
+          make train
 
       - name: Evaluate model
-        run: make evaluate
+        run: |
+          source venv/bin/activate
+          make evaluate
 
       - name: Run tests
-        run: make test
+        run: |
+          source venv/bin/activate
+          make test
 
-      - name: Start MLflow tracking
-        run: make run-mlflow
-        continue-on-error: true  # Permet au workflow de continuer même si MLflow reste actif
+      - name: Validate model artifact
+        run: |
+          if [ ! -f model.joblib ]; then
+            echo "❌ Model file not found!"
+            exit 1
+          fi
 
-      - name: Verify model existence
-        run: make check-model
-
-      - name: Upload trained model
+      - name: Upload model
         uses: actions/upload-artifact@v3
         with:
-          name: model-artifact
+          name: trained-model
           path: model.joblib
